@@ -15,9 +15,9 @@ import {
 } from 'react-native';
 
 //提示
-import {KeyTip} from './views'
+import { KeyTip } from './views'
 
-export default class KeyBoard extends Component{
+export default class KeyBoard extends Component {
     state: Object
     backSpaceRequest: number
     insertTextRequest: number
@@ -35,7 +35,8 @@ export default class KeyBoard extends Component{
         super(...arguments)
         this.state = {
             width: 0,
-            showTip: {isShow:false, layout:{x:0,y:0,width:0,height:0}, keyValue:""}
+            showTip: { isShow: false, layout: { x: 0, y: 0, width: 0, height: 0 }, keyValue: "" },
+            kTempView:null
         }
     }
 
@@ -69,14 +70,14 @@ export default class KeyBoard extends Component{
 
     //{isShow, ref, keyValue}
     _showTip = (showTipData) => {
-        if(showTipData.isShow) {
+        if (showTipData.isShow) {
             showTipData.ref.measureLayout(findNodeHandle(this.refs.keyboard), (left, top, width, height) => {
                 console.log(`key: ${showTipData.keyValue} left:${left} top:${top} width:${width} height:${height}`)
                 //{isShow:false, layout:{x:0,y:0,width:0,height:0}, keyValue:""}
-                this.setState({...this.state, showTip:{...showTipData, layout:{x:left, y:top, width, height}}})
+                this.setState({ ...this.state, showTip: { ...showTipData, layout: { x: left, y: top, width, height } } })
             })
         } else {
-            this.setState({...this.state, showTip:showTipData})
+            this.setState({ ...this.state, showTip: showTipData })
         }
     }
 
@@ -89,12 +90,12 @@ export default class KeyBoard extends Component{
     }
 
     _renderTip = () => {
-        const {isShow, layout, keyValue} = this.state.showTip
+        const { isShow, layout, keyValue } = this.state.showTip
         return isShow ?
             (
                 <KeyTip
-                    layout = {layout}
-                    keyValue = {keyValue}
+                    layout={layout}
+                    keyValue={keyValue}
                 />
             )
             :
@@ -108,34 +109,24 @@ export default class KeyBoard extends Component{
         this.clearAllRequest && cancelAnimationFrame(this.clearAllRequest)
     }
 
-    render() {
-        const {KeyBoardView} = this.props
+    componentDidMount(){
+        const { KeyBoardView } = this.props;
+        if(KeyBoardView){
+            let kTempView = KeyBoardView();
+            this.setState({
+                kTempView:kTempView
+            })
+        }
+    }
 
+   
+    render() {
         return (
             <View onLayout={this._onLayout} style={styles.container} ref="keyboard" pointerEvents="box-none">
                 <View style={styles.keyBoard} key="keyboard">
                     {
-                        !KeyBoardView.customKeyboardTop && (
-                            <View style={styles.top}>
-                                <View style={styles.topLeft}>
-                                    {
-                                        KeyBoardView.getKeyBoardIcon && KeyBoardView.getKeyBoardIcon()
-                                    }
-                                    <Text style={styles.topDesText}>{KeyBoardView.getKeyBoardName && KeyBoardView.getKeyBoardName()}</Text>
-                                </View>
-                                <TouchableOpacity onPress={this._clearFocus}>
-                                    <Text style={styles.topCompleteText}>完成</Text>
-                                </TouchableOpacity>
-                            </View>
-                        )
+                        this.state.kTempView
                     }
-                    <KeyBoardView
-                        {...this.props}
-                        onKeyPress={this._handleKeyPress}
-                        onDelete={this._handleDelete}
-                        onClearAll={this._handlerClearAll}
-                        showTip={this._showTip}
-                    />
                 </View>
                 {this._renderTip()}
             </View>
@@ -177,4 +168,3 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
     }
 })
-
