@@ -1,170 +1,164 @@
 //@flow
 
-import React, { Component } from 'react';
-
-import PropTypes from 'prop-types'
+import React, {Component, PureComponent} from 'react'
 
 import {
-    TouchableOpacity,
-    Text,
-    Image,
-    View,
-    StyleSheet,
+    ScrollView,
     findNodeHandle,
-    DeviceInfo,
-} from 'react-native';
+    Dimensions,
+    TextInput,
+    View,
+    Platform,
+    Keyboard,
+    UIManager,
+} from 'react-native'
 
-//提示
-import { KeyTip } from './views'
+import * as CustomKeyboard from './customKeyboard'
 
-export default class KeyBoard extends Component {
+export default class AwareCusKeyBoardScrollView extends PureComponent {
     state: Object
-    backSpaceRequest: number
-    insertTextRequest: number
-    clearFocusRequest: number
-    clearAllRequest: number
 
-    static propTypes = {
-        insertText: PropTypes.func.isRequired,
-        clearFocus: PropTypes.func.isRequired,
-        clearAll: PropTypes.func.isRequired,
-        KeyBoardView: PropTypes.any.isRequired,
-    }
+    //防止自定义键盘切换之间的闪跳
+    showKeyBoard: boolean
+    resetTimeout: number
+
+    //监听系统键盘
+    showKeyBoardSub: any
+    hideKeyboardSub: any
+
+    //监听自定义键盘
+    showCustomKeyBoardSub: any
+    hideCustomKeyboardSub: any
+
+    //区分showSys->hideSys和showSys->showCus->hideSys之间的区别
+    flag: number
 
     constructor() {
         super(...arguments)
+
+        this.flag = 0
         this.state = {
-            width: 0,
-            showTip: { isShow: false, layout: { x: 0, y: 0, width: 0, height: 0 }, keyValue: "" },
-            kTempView:null
+            showKeyBoard: false,
         }
     }
 
-    _handleDelete = () => {
-        this.backSpaceRequest && cancelAnimationFrame(this.backSpaceRequest)
-        this.backSpaceRequest = requestAnimationFrame(() => {
-            this.props.backSpace(this.props.tag);
-        })
-    };
-
-    _handleKeyPress = (key) => {
-        this.insertTextRequest && cancelAnimationFrame(this.insertTextRequest)
-        this.insertTextRequest = requestAnimationFrame(() => {
-            this.props.insertText(this.props.tag, key);
-        })
-    }
-
-    _clearFocus = () => {
-        this.clearFocusRequest && cancelAnimationFrame(this.clearFocusRequest)
-        this.clearFocusRequest = requestAnimationFrame(() => {
-            this.props.clearFocus(this.props.tag)
-        })
-    }
-
-    _handlerClearAll = () => {
-        this.clearAllRequest && cancelAnimationFrame(this.clearAllRequest)
-        this.clearAllRequest = requestAnimationFrame(() => {
-            this.props.clearAll(this.props.tag)
-        })
-    }
-
-    //{isShow, ref, keyValue}
-    _showTip = (showTipData) => {
-        if (showTipData.isShow) {
-            showTipData.ref.measureLayout(findNodeHandle(this.refs.keyboard), (left, top, width, height) => {
-                console.log(`key: ${showTipData.keyValue} left:${left} top:${top} width:${width} height:${height}`)
-                //{isShow:false, layout:{x:0,y:0,width:0,height:0}, keyValue:""}
-                this.setState({ ...this.state, showTip: { ...showTipData, layout: { x: left, y: top, width, height } } })
-            })
-        } else {
-            this.setState({ ...this.state, showTip: showTipData })
+    componentDidMount() {
+        if (Platform.OS === 'android') {
+            this.showCustomKeyBoardSub = CustomKeyboard.addKeyBoardShowListener(this._onFocus)
+            this.hideCustomKeyboardSub = CustomKeyboard.addKeyBoardHideListener(this._onReset)
+            this.showKeyBoardSub = Keyboard.addListener('keyboardDidShow', this._showSysKeyborad)
+            this.hideKeyboardSub = Keyboard.addListener('keyboardDidHide', this._hideSysKeyboard)
         }
     }
 
-    _onLayout = ({ nativeEvent }) => {
-        const width = nativeEvent.layout.width
-        let height = nativeEvent.layout.height
-        if (width > 0 && width !== this.state.width) {
-            this.setState({ ...this.state, width })
+    componentDidUpdate(preProps: Object, preState: Object,) {
+        if (preState.showKeyBoard != this.state.showKeyBoard) {
+            this._updateScrollTo()
         }
-    }
-
-    _renderTip = () => {
-        const { isShow, layout, keyValue } = this.state.showTip
-        return isShow ?
-            (
-                <KeyTip
-                    layout={layout}
-                    keyValue={keyValue}
-                />
-            )
-            :
-            null
     }
 
     componentWillUnmount() {
-        this.clearFocusRequest && cancelAnimationFrame(this.clearFocusRequest)
-        this.insertTextRequest && cancelAnimationFrame(this.insertTextRequest)
-        this.backSpaceRequest && cancelAnimationFrame(this.backSpaceRequest)
-        this.clearAllRequest && cancelAnimationFrame(this.clearAllRequest)
+        this.showCustomKeyBoardSub && CustomKeyboard.removeKeyBoardListener(this.showCustomKeyBoardSub)
+        this.hideCustomKeyboardSub && CustomKeyboard.removeKeyBoardListener(this.hideCustomKeyboardSub)
+        this.showKeyBoardSub && this.showKeyBoardSub.remove()
+        this.hideKeyboardSub && this.hideKeyboardSub.remove()
+
+        this.scrollTimeout && clearTimeout(this.scrollTimeout)
+        this.resetTimeout && clearTimeout(this.resetTimeout)
     }
 
-    componentDidMount(){
-        const { KeyBoardView } = this.props;
-        if(KeyBoardView){
-            let kTempView = KeyBoardView();
-            this.setState({
-                kTempView:kTempView
-            })
+    _showSysKeyborad = (frames: Object) => {
+        console.log('show system keyboard')
+
+        //防止自定义键盘跳到系统键盘出bug
+        this.resetTimeout && clearTimeout(this.resetTimeout)
+
+        this.flag++
+    }
+
+    _hideSysKeyboard = () => {
+        this.flag--
+        if(this.flag === 0) {
+            //之间切换状态到键盘不显示
+            this.showKeyBoard = false
+            this._changeKeyBoardState()
         }
     }
 
-   
-    render() {
-        return (
-            <View onLayout={this._onLayout} style={styles.container} ref="keyboard" pointerEvents="box-none">
-                <View style={styles.keyBoard} key="keyboard">
-                    {
-                        this.state.kTempView
+    _onFocus = () => {
+        this.showKeyBoard = true
+        this.flag += 2
+
+        this.resetTimeout && clearTimeout(this.resetTimeout)
+
+        this._changeKeyBoardState()
+    }
+
+    _onReset = () => {
+        this.showKeyBoard = false
+        this.flag -= 2
+
+        this.resetTimeout && clearTimeout(this.resetTimeout)
+
+        this.resetTimeout = setTimeout(()=>{
+            this._changeKeyBoardState()
+        }, 200)
+    }
+
+    _changeKeyBoardState = () => {
+        this.setState((preState) => {
+            if (preState.showKeyBoard === this.showKeyBoard) {
+                this._updateScrollTo()
+                return preState
+            }
+            return {showKeyBoard: this.showKeyBoard}
+        })
+    }
+
+    _onError = () => {}
+
+    _updateScrollTo = () => {
+        if(TextInput.State.currentlyFocusedField() == null) {
+            return
+        }
+
+        const currentlyTfNode = TextInput.State.currentlyFocusedField()
+        const scrollViewNode = findNodeHandle(this.refs.scrollView)
+
+        //显示和隐藏键盘
+        if (this.state.showKeyBoard) {
+            UIManager.measureInWindow(scrollViewNode, (x, y, width, height) => {
+                UIManager.measureLayout(
+                    currentlyTfNode,
+                    scrollViewNode,
+                    this._onError,
+                    (left, top, width, height) => {
+                        const windowHeight = Dimensions.get('window').height
+                        const subHeight = windowHeight - CustomKeyboard.currentHeight
+                        const currentHeight = top + height + y + 30 //上下padding高度
+                        if (subHeight < currentHeight) {
+                            this.refs.scrollView.scrollTo({y: currentHeight - subHeight})
+                        }
                     }
-                </View>
-                {this._renderTip()}
-            </View>
+                )
+            })
+        } else {
+            this.refs.scrollView.scrollTo({y: 0})
+        }
+    }
+
+    render() {
+        const {children, otherProps} = this.props
+        return (
+            <ScrollView
+                ref="scrollView"
+                key="scrollView"
+                keyboardShouldPersistTaps="handled"
+                {...otherProps}
+            >
+                {this.props.children}
+                <View style={{height: this.state.showKeyBoard ? CustomKeyboard.currentHeight : 0}}/>
+            </ScrollView>
         )
     }
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: 'transparent',
-        justifyContent: 'flex-end',
-    },
-    keyBoard: {
-        backgroundColor: '#f6f5f2',
-        height: DeviceInfo.isIPhoneX_deprecated ? 286 : 252,
-    },
-    top: {
-        height: 36,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: '#a5a5a5',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    topLeft: {
-        paddingLeft: 15,
-        flexDirection: 'row',
-    },
-    topDesText: {
-        color: '#adadad',
-        fontSize: 15,
-        paddingHorizontal: 8,
-    },
-    topCompleteText: {
-        color: '#0297fa',
-        fontSize: 15,
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-    }
-})
